@@ -1,13 +1,10 @@
 import Result "mo:base/Result";
 import HashMap "mo:base/HashMap";
-import TrieMap "mo:base/TrieMap";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Nat64 "mo:base/Nat64";
 import Iter "mo:base/Iter";
-import Blob "mo:base/Blob";
-import Debug "mo:base/Debug";
 import Option "mo:base/Option";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
@@ -303,7 +300,7 @@ actor {
     /////////////////
     // PROJECT #5 //
     ///////////////
-    let logo : Text = "";
+    let logo : Text = "<svg width='800px' height='800px' viewBox='0 0 14 14' role='img' focusable='false' aria-hidden='true' xmlns='http://www.w3.org/2000/svg'><path fill='#ff9800' d='M13 5.2V4h-3V1H8.8v3H7.6V1H6.4v3H5.2V1H4v3H1v1.2h3v1.2H1v1.2h3v1.2H1V10h3v3h1.2v-3h1.2v3h1.2v-3h1.2v3H10v-3h3V8.8h-3V7.6h3V6.4h-3V5.2h3z'/><path fill='#4caf50' d='M2.2 3.4v7.2c0 .66.54 1.2 1.2 1.2h7.2c.66 0 1.2-.54 1.2-1.2V3.4c0-.66-.54-1.2-1.2-1.2H3.4c-.66 0-1.2.54-1.2 1.2z'/><path fill='#37474f' d='M9.1 9.1H4.9c-.33 0-.6-.27-.6-.6v-3c0-.33.27-.6.6-.6h4.2c.33 0 .6.27.6.6v3c0 .33-.27.6-.6.6z'/></svg>";
 
     func _getWebpage() : Text {
         var webpage = "<style>" #
@@ -333,20 +330,20 @@ actor {
 
     public query func getStats() : async DAOStats {
         return ({
-            name = "";
-            manifesto = "";
-            goals = [];
-            members = [];
-            logo = "";
-            numberOfMembers = 0;
+            name;
+            manifesto;
+            goals = Buffer.toArray(goals);
+            members = Iter.toArray(Iter.map<Member, Text>(members.vals(), func(member : Member) { member.name }));
+            logo;
+            numberOfMembers = members.size();
         });
     };
 
     public func http_request(request : HttpRequest) : async HttpResponse {
         return ({
-            status_code = 404;
-            headers = [];
-            body = Blob.fromArray([]);
+            status_code = 200 : Nat16;
+            headers = [("Content-Type", "text/html; charset=UTF-8")];
+            body = Text.encodeUtf8(_getWebpage());
             streaming_strategy = null;
         });
     };

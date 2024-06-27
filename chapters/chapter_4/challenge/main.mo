@@ -5,6 +5,9 @@ import Iter "mo:base/Iter";
 import Principal "mo:base/Principal";
 import Option "mo:base/Option";
 import Types "types";
+import Nat64 "mo:base/Nat64";
+import Time "mo:base/Time";
+import Array "mo:base/Array";
 actor {
     // For this level we need to make use of the code implemented in the previous projects.
     // The voting system will make use of previous data structures and functions.
@@ -136,6 +139,12 @@ actor {
         return #ok();
     };
 
+    func _burn(owner : Principal, amount : Nat) : () {
+        let balance = Option.get(ledger.get(owner), 0);
+        ledger.put(owner, balance - amount);
+        return;
+    };
+
     public shared ({ caller }) func transfer(from : Principal, to : Principal, amount : Nat) : async Result<(), Text> {
         let balanceFrom = Option.get(ledger.get(from), 0);
         let balanceTo = Option.get(ledger.get(to), 0);
@@ -161,19 +170,118 @@ actor {
     /////////////////
     // PROJECT #4 //
     ///////////////
+    var nextProposalID : Nat64 = 0;
+    let proposals = HashMap.HashMap<ProposalId, Proposal>(0, Nat64.equal, Nat64.toNat32);
+
     public shared ({ caller }) func createProposal(content : ProposalContent) : async Result<ProposalId, Text> {
-        return #err("Not implemented");
+        switch (members.get(caller)) {
+            case (null) {
+                return #err("The caller is not a member.");
+            };
+            case (?member) {
+                let balance : Nat = Option.get(ledger.get(caller), 0);
+                if (balance < 1) {
+                    return #err("The caller does not have enough tokens.");
+                } else {
+                    _burn(caller, 1);
+                    let newProposal : Proposal = {
+                        id = nextProposalID;
+                        content = content;
+                        creator = caller;
+                        created = Time.now();
+                        executed = null;
+                        votes = [];
+                        voteScore = 0;
+                        status = #Open;
+                    };
+                    proposals.put(newProposal.id, newProposal);
+                    nextProposalID += 1;
+                    return #ok(newProposal.id);
+                };
+            };
+        };
     };
 
     public query func getProposal(proposalId : ProposalId) : async ?Proposal {
-        return null;
+        return proposals.get(proposalId);
+    };
+
+    func _executeProposal(content : ProposalContent) : () {
+        switch (content) {
+            case (#ChangeManifesto(newManifesto)) {
+                manifesto := newManifesto;
+            };
+            case (#AddGoal(newGoal)) {
+                goals.add(newGoal);
+            };
+        };
+        return;
     };
 
     public shared ({ caller }) func voteProposal(proposalId : ProposalId, yesOrNo : Bool) : async Result<(), Text> {
-        return #err("Not implemented");
+        switch (members.get(caller)) {
+            case (null) {
+                return #err("The caller is not a member.");
+            };
+            case (?member) {
+                switch (proposals.get(proposalId)) {
+                    case(null) {
+                        return #err("The proposal does not exist");
+                    };
+                    case(?proposal) {
+                        if(proposal.status != #Open) {
+                            return #err("The proposal is not open for voting");
+                        };
+                        if(Array.find<Vote>(proposal.votes, func vote = vote.member == caller) == null) {
+                            return #err("The caller has already voted on this proposal");
+                        };
+                        let balance : Nat = Option.get(ledger.get(caller), 0);
+                        let multiplierVote = switch (yesOrNo) {
+                            case (true) { 1 };
+                            case (false) { -1 };
+                        };
+                        let newVoteScore = proposal.voteScore + balance * multiplierVote;
+                        let newStatus = if (newVoteScore >= 100) {
+                            #Accepted;
+                        } else if (newVoteScore <= -100) {
+                            #Rejected;
+                        } else {
+                            #Open;
+                        };
+                        var newExecuted : ?Time.Time = null;
+                        switch (newStatus) {
+                            case (#Accepted) {
+                                _executeProposal(proposal.content);
+                                newExecuted := ?Time.now();
+                            };
+                            case (_) {};
+                        };
+                        let newVote : Vote = {
+                            member = caller;
+                            votingPower = balance;
+                            yesOrNo = yesOrNo;
+                        };
+                        let newVotes = Buffer.fromArray<Vote>(proposal.votes);
+                        newVotes.add(newVote);
+                        let updatedProposal : Proposal = {
+                            id = proposal.id;
+                            content = proposal.content;
+                            creator = proposal.creator;
+                            created = proposal.created;
+                            executed = newExecuted;
+                            votes = Buffer.toArray(newVotes);
+                            voteScore = newVoteScore;
+                            status = newStatus;
+                        };
+                        proposals.put(proposal.id, updatedProposal);
+                        return #ok(); 
+                    };
+                };
+            };
+        };
     };
 
     public query func getAllProposals() : async [Proposal] {
-        return [];
+        return Iter.toArray<Proposal>(proposals.vals());
     };
 };
